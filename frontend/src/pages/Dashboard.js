@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import Logo from "../components/Logo";
 
@@ -8,7 +8,7 @@ export default function Dashboard() {
 
   const token = localStorage.getItem("token");
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       const res = await axios.get("http://localhost:5000/api/projects", {
         headers: { Authorization: token },
@@ -17,7 +17,7 @@ export default function Dashboard() {
     } catch {
       window.location.href = "/";
     }
-  };
+  }, [token]);
 
   const createProject = async () => {
     if (!name.trim()) return alert("Enter a project name");
@@ -32,7 +32,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [fetchProjects]);
 
   return (
     <div className="dashboard">
@@ -41,7 +41,10 @@ export default function Dashboard() {
         <button
           className="create-btn"
           style={{ marginLeft: "auto" }}
-          onClick={() => { localStorage.removeItem("token"); window.location.href = "/"; }}
+          onClick={() => {
+            localStorage.removeItem("token");
+            window.location.href = "/";
+          }}
         >
           Sign out
         </button>
@@ -53,24 +56,28 @@ export default function Dashboard() {
       </div>
 
       <div className="dash-top">
-        <button className="create-btn" onClick={createProject}>+ Create Project</button>
+        <button className="create-btn" onClick={createProject}>
+          + Create Project
+        </button>
         <input
           placeholder="Project name..."
           value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && createProject()}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && createProject()}
         />
       </div>
 
       <div className="project-grid">
-        {projects.map(p => (
+        {projects.map((p) => (
           <div className="project-card" key={p._id}>
             <h3>{p.name}</h3>
             <p>Click to open and start coding</p>
-            <button onClick={() => {
-              localStorage.setItem("projectId", p._id);
-              window.location.href = "/editor";
-            }}>
+            <button
+              onClick={() => {
+                localStorage.setItem("projectId", p._id);
+                window.location.href = "/editor";
+              }}
+            >
               Open →
             </button>
           </div>
