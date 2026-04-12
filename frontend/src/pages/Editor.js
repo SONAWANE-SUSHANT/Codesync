@@ -1,51 +1,53 @@
 import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import MonacoEditor from "@monaco-editor/react";
-import Logo from "../components/Logo";
 
 export default function EditorPage() {
-  const [files, setFiles] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
   const [content, setContent] = useState("");
-  const [output, setOutput] = useState("");
   const [language, setLanguage] = useState(63);
-  const [commits, setCommits] = useState([]);
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [showChat, setShowChat] = useState(false);
-  const [expandedFolders, setExpandedFolders] = useState({});
-  const [running, setRunning] = useState(false);
-
-  const [messages, setMessages] = useState([]);
-  const [msg, setMsg] = useState("");
 
   const token = localStorage.getItem("token");
   const projectId = localStorage.getItem("projectId");
 
+  // ✅ Fetch files (minimal safe use)
   const fetchFiles = useCallback(async () => {
-    const res = await axios.get(`http://localhost:5000/api/files/${projectId}`, {
-      headers: { Authorization: token },
-    });
-    setFiles(res.data);
+    try {
+      await axios.get(`http://localhost:5000/api/files/${projectId}`, {
+        headers: { Authorization: token },
+      });
+    } catch (err) {
+      console.log(err);
+    }
   }, [projectId, token]);
 
+  // ✅ Fetch commits
   const fetchCommits = useCallback(async () => {
-    const res = await axios.get(`http://localhost:5000/api/commits/${projectId}`, {
-      headers: { Authorization: token },
-    });
-    setCommits(res.data);
+    try {
+      await axios.get(`http://localhost:5000/api/commits/${projectId}`, {
+        headers: { Authorization: token },
+      });
+    } catch (err) {
+      console.log(err);
+    }
   }, [projectId, token]);
 
+  // ✅ Fetch messages
   const fetchMessages = useCallback(async () => {
-    const res = await axios.get(`http://localhost:5000/api/messages/${projectId}`);
-    setMessages(res.data);
+    try {
+      await axios.get(`http://localhost:5000/api/messages/${projectId}`);
+    } catch (err) {
+      console.log(err);
+    }
   }, [projectId]);
 
+  // ✅ useEffect with correct dependencies
   useEffect(() => {
     fetchFiles();
     fetchCommits();
     fetchMessages();
   }, [fetchFiles, fetchCommits, fetchMessages]);
 
+  // ✅ Language mapping
   const getLanguage = () => {
     if (language === 63) return "javascript";
     if (language === 71) return "python";
@@ -55,14 +57,28 @@ export default function EditorPage() {
   };
 
   return (
-    <div>
-      <h2>Editor Loaded Successfully</h2>
+    <div style={{ padding: "20px" }}>
+      <h2>CodeSync Editor</h2>
+
+      {/* Language Selector */}
+      <select
+        value={language}
+        onChange={(e) => setLanguage(Number(e.target.value))}
+        style={{ marginBottom: "10px" }}
+      >
+        <option value="63">JavaScript</option>
+        <option value="71">Python</option>
+        <option value="54">C++</option>
+        <option value="62">Java</option>
+      </select>
+
+      {/* Editor */}
       <MonacoEditor
         height="400px"
         theme="vs-dark"
         language={getLanguage()}
         value={content}
-        onChange={(v) => setContent(v || "")}
+        onChange={(value) => setContent(value || "")}
       />
     </div>
   );
