@@ -1,4 +1,3 @@
-
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -15,26 +14,31 @@ const messageRoutes = require("./routes/messageRoutes");
 
 const app = express();
 
-// Connect Database
+// ✅ Connect Database
 connectDB();
 
-// Middlewares
-app.use(cors());
+// ✅ Middlewares
+app.use(cors({
+  origin: "*", // allow all (for now, later restrict to your frontend URL)
+}));
 app.use(express.json());
 
-// Routes
-app.use("/api/commits", commitRoutes);
+// ✅ Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/files", fileRoutes);
+app.use("/api/commits", commitRoutes);
 app.use("/api/code", codeRoutes);
 app.use("/api/messages", messageRoutes);
-// Test Route
+
+// ✅ Test Route
 app.get("/", (req, res) => {
   res.send("API Running...");
 });
 
-// Start Server
-app.listen(5000, () => {
-  console.log("Server running on port 5000");
+// ✅ IMPORTANT: Dynamic PORT for Render
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
