@@ -9,10 +9,10 @@ const {
 const auth = require("../middleware/authMiddleware");
 const File = require("../models/File");
 
-// ================= CREATE FILE =================
+// ============ CREATE FILE ===========
 router.post("/", auth, createFile);
 
-// ================= CREATE FOLDER =================
+// ==== CREATE FOLDER =======
 router.post("/folder", auth, async (req, res) => {
   try {
     const { projectId, folderName } = req.body;
@@ -30,10 +30,10 @@ router.post("/folder", auth, async (req, res) => {
   }
 });
 
-// ================= GET FILES =================
+// ================= GET FILES ======
 router.get("/:projectId", auth, getFiles);
 
-// ================= UPDATE FILE =================
+// ====== UPDATE FILE =================
 router.put("/:fileId", auth, updateFile);
 
 module.exports = router;

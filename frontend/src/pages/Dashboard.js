@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import Logo from "../components/Logo";
 
+// ✅ Backend URL
+const BASE_URL = "https://codesync-1-fnv2.onrender.com";
+
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [name, setName] = useState("");
@@ -10,7 +13,7 @@ export default function Dashboard() {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/projects", {
+      const res = await axios.get(`${BASE_URL}/api/projects`, {
         headers: { Authorization: token },
       });
       setProjects(res.data);
@@ -21,11 +24,13 @@ export default function Dashboard() {
 
   const createProject = async () => {
     if (!name.trim()) return alert("Enter a project name");
+
     await axios.post(
-      "http://localhost:5000/api/projects",
+      `${BASE_URL}/api/projects`,
       { name },
       { headers: { Authorization: token } }
     );
+
     setName("");
     fetchProjects();
   };

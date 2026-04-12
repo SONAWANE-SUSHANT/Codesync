@@ -2,17 +2,25 @@ import { useState } from "react";
 import axios from "axios";
 import Logo from "../components/Logo";
 
+// ✅ Backend URL
+const BASE_URL = "https://codesync-1-fnv2.onrender.com";
+
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const login = async () => {
-    if (!form.email || !form.password) return setError("Please fill in all fields");
+    if (!form.email || !form.password) {
+      return setError("Please fill in all fields");
+    }
+
     setError("");
     setLoading(true);
+
     try {
-      const res = await axios.post("http://localhost:5000/api/auth/login", form);
+      const res = await axios.post(`${BASE_URL}/api/auth/login`, form);
+
       localStorage.setItem("token", res.data.token);
       window.location.href = "/dashboard";
     } catch (err) {
@@ -28,6 +36,7 @@ export default function Login() {
         <div className="auth-logo">
           <Logo size="lg" />
         </div>
+
         <h2>Welcome back</h2>
         <p className="auth-subtitle">Sign in to your workspace</p>
 
@@ -39,18 +48,19 @@ export default function Login() {
             type="email"
             placeholder="you@example.com"
             value={form.email}
-            onChange={e => setForm({ ...form, email: e.target.value })}
-            onKeyDown={e => e.key === "Enter" && login()}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            onKeyDown={(e) => e.key === "Enter" && login()}
           />
         </div>
+
         <div className="field">
           <label>Password</label>
           <input
             type="password"
             placeholder="••••••••"
             value={form.password}
-            onChange={e => setForm({ ...form, password: e.target.value })}
-            onKeyDown={e => e.key === "Enter" && login()}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            onKeyDown={(e) => e.key === "Enter" && login()}
           />
         </div>
 
@@ -58,7 +68,12 @@ export default function Login() {
           {loading ? "Signing in..." : "Sign in"}
         </button>
 
-        <p>No account? <span onClick={() => window.location.href = "/register"}>Register</span></p>
+        <p>
+          No account?{" "}
+          <span onClick={() => (window.location.href = "/register")}>
+            Register
+          </span>
+        </p>
       </div>
     </div>
   );

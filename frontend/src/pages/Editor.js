@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import MonacoEditor from "@monaco-editor/react";
 
+// ✅ Backend URL
+const BASE_URL = "https://codesync-1-fnv2.onrender.com";
+
 export default function EditorPage() {
   const [content, setContent] = useState("");
   const [language, setLanguage] = useState(63);
@@ -9,10 +12,10 @@ export default function EditorPage() {
   const token = localStorage.getItem("token");
   const projectId = localStorage.getItem("projectId");
 
-  // ✅ Fetch files (minimal safe use)
+  // ✅ Fetch files
   const fetchFiles = useCallback(async () => {
     try {
-      await axios.get(`http://localhost:5000/api/files/${projectId}`, {
+      await axios.get(`${BASE_URL}/api/files/${projectId}`, {
         headers: { Authorization: token },
       });
     } catch (err) {
@@ -23,7 +26,7 @@ export default function EditorPage() {
   // ✅ Fetch commits
   const fetchCommits = useCallback(async () => {
     try {
-      await axios.get(`http://localhost:5000/api/commits/${projectId}`, {
+      await axios.get(`${BASE_URL}/api/commits/${projectId}`, {
         headers: { Authorization: token },
       });
     } catch (err) {
@@ -34,13 +37,13 @@ export default function EditorPage() {
   // ✅ Fetch messages
   const fetchMessages = useCallback(async () => {
     try {
-      await axios.get(`http://localhost:5000/api/messages/${projectId}`);
+      await axios.get(`${BASE_URL}/api/messages/${projectId}`);
     } catch (err) {
       console.log(err);
     }
   }, [projectId]);
 
-  // ✅ useEffect with correct dependencies
+  // ✅ useEffect
   useEffect(() => {
     fetchFiles();
     fetchCommits();
