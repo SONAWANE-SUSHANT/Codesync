@@ -1,4 +1,5 @@
 const File = require("../models/File");
+const { log } = require("./activityController");
 
 // Create File
 exports.createFile = async (req, res) => {
@@ -9,9 +10,18 @@ exports.createFile = async (req, res) => {
       parentFolder: req.body.parentFolder || "root",
       content: "",
     });
+
+    await log({
+      projectId: req.body.projectId,
+      userId: req.user.id,
+      userName: req.user.name || "Someone",
+      action: "created_file",
+      detail: req.body.fileName,
+    });
+
     res.json(file);
-  } catch (error) {
-    res.status(500).json({ msg: "File creation failed", error });
+  } catch (err) {
+    res.status(500).json({ msg: "File creation failed", error: err });
   }
 };
 
@@ -20,8 +30,8 @@ exports.getFiles = async (req, res) => {
   try {
     const files = await File.find({ projectId: req.params.projectId });
     res.json(files);
-  } catch (error) {
-    res.status(500).json({ msg: "Fetch failed", error });
+  } catch {
+    res.status(500).json({ msg: "Fetch failed" });
   }
 };
 
@@ -33,43 +43,60 @@ exports.updateFile = async (req, res) => {
       { content: req.body.content },
       { new: true }
     );
+
+    await log({
+      projectId: file.projectId,
+      userId: req.user.id,
+      userName: req.user.name || "Someone",
+      action: "saved",
+      detail: file.fileName,
+    });
+
     res.json(file);
-  } catch (error) {
-    res.status(500).json({ msg: "Update failed", error });
+  } catch {
+    res.status(500).json({ msg: "Update failed" });
   }
 };
 
-// Rename File or Folder
+// Rename File
 exports.renameFile = async (req, res) => {
   try {
-    const { fileName } = req.body;
-    if (!fileName) return res.status(400).json({ msg: "New name required" });
-
     const file = await File.findByIdAndUpdate(
       req.params.fileId,
-      { fileName },
+      { fileName: req.body.fileName },
       { new: true }
     );
+
+    await log({
+      projectId: file.projectId,
+      userId: req.user.id,
+      userName: req.user.name || "Someone",
+      action: "renamed_file",
+      detail: `→ ${req.body.fileName}`,
+    });
+
     res.json(file);
-  } catch (error) {
-    res.status(500).json({ msg: "Rename failed", error });
+  } catch {
+    res.status(500).json({ msg: "Rename failed" });
   }
 };
 
-// Delete File or Folder
+// Delete File
 exports.deleteFile = async (req, res) => {
   try {
-    const file = await File.findById(req.params.fileId);
+    const file = await File.findByIdAndDelete(req.params.fileId);
     if (!file) return res.status(404).json({ msg: "File not found" });
 
-    // If deleting a folder, also delete all files inside it
-    if (file.isFolder) {
-      await File.deleteMany({ projectId: file.projectId, parentFolder: file.fileName });
-    }
+    await log({
+      projectId: file.projectId,
+      userId: req.user.id,
+      userName: req.user.name || "Someone",
+      action: "deleted_file",
+      detail: file.fileName,
+    });
 
-    await File.findByIdAndDelete(req.params.fileId);
-    res.json({ msg: "Deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ msg: "Delete failed", error });
+    res.json({ msg: "Deleted" });
+  } catch {
+    res.status(500).json({ msg: "Delete failed" });
   }
 };

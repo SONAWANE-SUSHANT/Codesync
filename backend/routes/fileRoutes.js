@@ -1,12 +1,6 @@
 const router = require("express").Router();
-const {
-  createFile,
-  getFiles,
-  updateFile,
-  renameFile,
-  deleteFile,
-} = require("../controllers/fileController");
-const auth = require("../middleware/authMiddleware");
+const { createFile, getFiles, updateFile, renameFile, deleteFile } = require("../controllers/fileController");
+const auth = require("../middleware/AuthMiddleware");
 const File = require("../models/File");
 
 // Create file
@@ -16,14 +10,9 @@ router.post("/", auth, createFile);
 router.post("/folder", auth, async (req, res) => {
   try {
     const { projectId, folderName } = req.body;
-    const folder = await File.create({
-      projectId,
-      fileName: folderName,
-      isFolder: true,
-      content: "",
-    });
+    const folder = await File.create({ projectId, fileName: folderName, isFolder: true, content: "" });
     res.json(folder);
-  } catch (err) {
+  } catch {
     res.status(500).json({ msg: "Folder creation failed" });
   }
 });
@@ -31,13 +20,13 @@ router.post("/folder", auth, async (req, res) => {
 // Get files
 router.get("/:projectId", auth, getFiles);
 
-// Update file content
+// Update content
 router.put("/:fileId", auth, updateFile);
 
-// Rename file or folder
+// Rename
 router.patch("/:fileId/rename", auth, renameFile);
 
-// Delete file or folder
+// Delete
 router.delete("/:fileId", auth, deleteFile);
 
 module.exports = router;

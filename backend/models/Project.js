@@ -10,21 +10,13 @@ const projectSchema = new mongoose.Schema({
 
   members: [
     {
-      user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-      role: {
-        type: String,
-        default: "member", // owner / member
-      },
+      user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      // "owner" | "editor" | "viewer"
+      role: { type: String, default: "editor" },
     },
   ],
 
-  isPublic: {
-    type: Boolean,
-    default: false,
-  },
+  isPublic: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model("Project", projectSchema);

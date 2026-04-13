@@ -1,6 +1,6 @@
 const Commit = require("../models/Commit");
+const { log } = require("./activityController");
 
-// Create Commit
 exports.createCommit = async (req, res) => {
   try {
     const commit = await Commit.create({
@@ -10,21 +10,27 @@ exports.createCommit = async (req, res) => {
       createdBy: req.user.id,
     });
 
+    await log({
+      projectId: req.body.projectId,
+      userId: req.user.id,
+      userName: req.user.name || "Someone",
+      action: "committed",
+      detail: req.body.message,
+    });
+
     res.json(commit);
-  } catch (error) {
-    res.status(500).json({ msg: "Commit failed", error });
+  } catch {
+    res.status(500).json({ msg: "Commit failed" });
   }
 };
 
-// Get Commits of Project (populated with creator email)
 exports.getCommits = async (req, res) => {
   try {
     const commits = await Commit.find({ projectId: req.params.projectId })
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 });
-
     res.json(commits);
-  } catch (error) {
-    res.status(500).json({ msg: "Fetch commits failed", error });
+  } catch {
+    res.status(500).json({ msg: "Fetch commits failed" });
   }
 };
