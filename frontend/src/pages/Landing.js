@@ -46,7 +46,12 @@ export default function Landing() {
       {/* FOOTER */}
       <footer className="landing-footer">
         <Logo size="sm" />
-        <span>© {new Date().getFullYear()} CodeSync. Built for developers.</span>
+        <span>© {new Date().getFullYear()} CodeSync. This project, CodeSync, is built for learning purposes.
+
+Contact:
+Email - [sushantsonawane218@gmail.com](mailto:sushantsonawane218@gmail.com)
+Phone - 8767502166
+.</span>
       </footer>
     </div>
   );
