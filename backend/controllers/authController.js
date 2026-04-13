@@ -31,14 +31,12 @@ exports.login = async (req, res) => {
     if (!match) return res.status(400).json({ msg: "Invalid credentials" });
 
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, name: user.name },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // ✅ Correct place for response
-    res.json({ token, email: user.email });
-
+    res.json({ token });
   } catch (error) {
     res.status(500).json({ msg: "Login failed", error });
   }

@@ -1,8 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import Logo from "../components/Logo";
-
-const BASE_URL = "https://codesync-1-fnv2.onrender.com";
+import BASE_URL from "../config/api";
 
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -16,9 +15,10 @@ export default function Login() {
     try {
       const res = await axios.post(`${BASE_URL}/api/auth/login`, form);
       localStorage.setItem("token", res.data.token);
-      // Decode token to get userId for role lookups
+      // Decode JWT to cache userId and userName locally (avoids extra API calls)
       const payload = JSON.parse(atob(res.data.token.split(".")[1]));
-      if (payload.id) localStorage.setItem("userId", payload.id);
+      if (payload.id)   localStorage.setItem("userId",   payload.id);
+      if (payload.name) localStorage.setItem("userName", payload.name);
       window.location.href = "/dashboard";
     } catch (err) {
       setError(err.response?.data?.msg || "Login failed");

@@ -3,8 +3,7 @@ import axios from "axios";
 import MonacoEditor from "@monaco-editor/react";
 import { io } from "socket.io-client";
 import ToastContainer, { useToast } from "../components/Toast";
-
-const BASE_URL = "https://codesync-1-fnv2.onrender.com";
+import BASE_URL from "../config/api";
 
 function Logo({ size }) {
   const isLg = size === "lg";
@@ -26,6 +25,69 @@ function Logo({ size }) {
   );
 }
 
+// Invite modal — replaces chained window.prompt() calls for role selection
+function InviteModal({ onClose, onInvite }) {
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("editor");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    if (!email.trim()) return;
+    setLoading(true);
+    await onInvite(email.trim(), role);
+    setLoading(false);
+    onClose();
+  };
+
+  const roleDesc = {
+    owner:  "Full access — can invite, delete, and manage everything.",
+    editor: "Can read, write, commit, and run code.",
+    viewer: "Read-only access. Cannot edit or commit.",
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 style={{ marginBottom: 16, fontSize: 15, fontWeight: 600 }}>Invite teammate</h3>
+
+        <div className="field">
+          <label>Email</label>
+          <input
+            type="email"
+            placeholder="teammate@example.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && submit()}
+            autoFocus
+            className="modal-input"
+          />
+        </div>
+
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>Role</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            {["owner", "editor", "viewer"].map(r => (
+              <button
+                key={r}
+                onClick={() => setRole(r)}
+                className={`role-option${role === r ? " selected" : ""}`}
+              >{r}</button>
+            ))}
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>{roleDesc[role]}</p>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+          <button onClick={onClose} className="modal-cancel">Cancel</button>
+          <button onClick={submit} disabled={loading} className="modal-confirm">
+            {loading ? "Inviting..." : "Send invite"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EditorPage() {
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -36,38 +98,46 @@ export default function EditorPage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showChat, setShowChat] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [running, setRunning] = useState(false);
   const [messages, setMessages] = useState([]);
   const [msg, setMsg] = useState("");
   const [activity, setActivity] = useState([]);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
+  const [contextMenu, setContextMenu] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [myRole, setMyRole] = useState("editor");
 
   const toast = useToast();
   const socketRef = useRef(null);
   const suppressRemote = useRef(false);
+  const chatBodyRef = useRef(null);
+  const selectedFileRef = useRef(null); // mirror of selectedFile for socket closure
 
   const token = localStorage.getItem("token");
   const projectId = localStorage.getItem("projectId");
+  const myUserId = localStorage.getItem("userId") || "";
+  const myName = localStorage.getItem("userName") || "Me";
+
+  // Keep ref in sync so socket handler always sees latest selectedFile
+  useEffect(() => { selectedFileRef.current = selectedFile; }, [selectedFile]);
 
   // ── Socket.IO ──────────────────────────────────────────
   useEffect(() => {
     const socket = io(BASE_URL, { auth: { token } });
     socketRef.current = socket;
-
     socket.emit("join-project", projectId);
 
     socket.on("code-change", ({ fileId, content: remoteContent }) => {
-      if (selectedFile?._id === fileId) {
+      if (selectedFileRef.current?._id === fileId) {
         suppressRemote.current = true;
         setContent(remoteContent);
       }
     });
 
+    // Only receives messages from OTHER users — our own are added optimistically
     socket.on("chat-message", (data) => {
-      setMessages(prev => [...prev, data]);
+      setMessages(prev => [...prev, { ...data, _mine: false }]);
     });
 
     socket.on("user-joined", ({ userName }) => {
@@ -83,45 +153,60 @@ export default function EditorPage() {
     // eslint-disable-next-line
   }, [projectId, token]);
 
+  // Auto-scroll chat to bottom on new messages or when chat opens
+  useEffect(() => {
+    if (chatBodyRef.current) {
+      chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
+    }
+  }, [messages, showChat]);
+
   // ── Files ───────────────────────────────────────────────
   const fetchFiles = useCallback(async () => {
-    const res = await axios.get(`${BASE_URL}/api/files/${projectId}`, {
-      headers: { Authorization: token },
-    });
-    setFiles(res.data);
+    try {
+      const res = await axios.get(`${BASE_URL}/api/files/${projectId}`, { headers: { Authorization: token } });
+      setFiles(res.data);
+    } catch { /* silent */ }
   }, [projectId, token]);
 
   const createFile = async (parentFolder = "root") => {
     const fileName = prompt("File name (e.g. index.js)");
     if (!fileName) return;
-    await axios.post(`${BASE_URL}/api/files`, { projectId, fileName, parentFolder }, { headers: { Authorization: token } });
-    toast.success(`Created ${fileName}`);
-    fetchFiles();
+    try {
+      await axios.post(`${BASE_URL}/api/files`, { projectId, fileName, parentFolder }, { headers: { Authorization: token } });
+      toast.success(`Created "${fileName}"`);
+      fetchFiles();
+    } catch { toast.error("Could not create file"); }
   };
 
   const createFolder = async () => {
     const folderName = prompt("Folder name");
     if (!folderName) return;
-    await axios.post(`${BASE_URL}/api/files/folder`, { projectId, folderName }, { headers: { Authorization: token } });
-    toast.success(`Folder ${folderName} created`);
-    fetchFiles();
+    try {
+      await axios.post(`${BASE_URL}/api/files/folder`, { projectId, folderName }, { headers: { Authorization: token } });
+      toast.success(`Folder "${folderName}" created`);
+      fetchFiles();
+    } catch { toast.error("Could not create folder"); }
   };
 
   const renameFile = async (file) => {
     const newName = prompt("New name", file.fileName);
     if (!newName || newName === file.fileName) return;
-    await axios.patch(`${BASE_URL}/api/files/${file._id}/rename`, { fileName: newName }, { headers: { Authorization: token } });
-    toast.success(`Renamed to ${newName}`);
-    if (selectedFile?._id === file._id) setSelectedFile(prev => ({ ...prev, fileName: newName }));
-    fetchFiles();
+    try {
+      await axios.patch(`${BASE_URL}/api/files/${file._id}/rename`, { fileName: newName }, { headers: { Authorization: token } });
+      toast.success(`Renamed to "${newName}"`);
+      if (selectedFile?._id === file._id) setSelectedFile(prev => ({ ...prev, fileName: newName }));
+      fetchFiles();
+    } catch { toast.error("Rename failed"); }
   };
 
   const deleteFile = async (file) => {
     if (!window.confirm(`Delete "${file.fileName}"?`)) return;
-    await axios.delete(`${BASE_URL}/api/files/${file._id}`, { headers: { Authorization: token } });
-    toast.success(`Deleted ${file.fileName}`);
-    if (selectedFile?._id === file._id) { setSelectedFile(null); setContent(""); }
-    fetchFiles();
+    try {
+      await axios.delete(`${BASE_URL}/api/files/${file._id}`, { headers: { Authorization: token } });
+      toast.success(`Deleted "${file.fileName}"`);
+      if (selectedFile?._id === file._id) { setSelectedFile(null); setContent(""); }
+      fetchFiles();
+    } catch { toast.error("Delete failed"); }
   };
 
   const selectFile = (file) => {
@@ -130,15 +215,16 @@ export default function EditorPage() {
     setContent(file.content || "");
   };
 
-  const toggleFolder = (folderId) => setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
+  const toggleFolder = (id) => setExpandedFolders(prev => ({ ...prev, [id]: !prev[id] }));
 
   const saveFile = async () => {
     if (!selectedFile) return toast.error("Select a file first");
-    await axios.put(`${BASE_URL}/api/files/${selectedFile._id}`, { content }, { headers: { Authorization: token } });
-    toast.success("Saved");
+    try {
+      await axios.put(`${BASE_URL}/api/files/${selectedFile._id}`, { content }, { headers: { Authorization: token } });
+      toast.success("Saved");
+    } catch { toast.error("Save failed"); }
   };
 
-  // ── Code change: broadcast to socket ───────────────────
   const handleCodeChange = (val) => {
     if (suppressRemote.current) { suppressRemote.current = false; return; }
     setContent(val || "");
@@ -165,24 +251,24 @@ export default function EditorPage() {
 
   // ── Commits ────────────────────────────────────────────
   const fetchCommits = useCallback(async () => {
-    const res = await axios.get(`${BASE_URL}/api/commits/${projectId}`, { headers: { Authorization: token } });
-    setCommits(res.data);
+    try {
+      const res = await axios.get(`${BASE_URL}/api/commits/${projectId}`, { headers: { Authorization: token } });
+      setCommits(res.data);
+    } catch { /* silent */ }
   }, [projectId, token]);
 
   const commitCode = async () => {
     const message = prompt("Commit message");
     if (!message) return;
-    await axios.post(`${BASE_URL}/api/commits`, { projectId, message, changes: content }, { headers: { Authorization: token } });
-    toast.success("Committed");
-    fetchCommits();
+    try {
+      await axios.post(`${BASE_URL}/api/commits`, { projectId, message, changes: content }, { headers: { Authorization: token } });
+      toast.success("Committed");
+      fetchCommits();
+    } catch { toast.error("Commit failed"); }
   };
 
   // ── Invite ─────────────────────────────────────────────
-  const inviteUser = async () => {
-    const email = prompt("Email to invite");
-    if (!email) return;
-    const role = prompt("Role: owner / editor / viewer", "editor");
-    if (!role) return;
+  const handleInvite = async (email, role) => {
     try {
       await axios.post(`${BASE_URL}/api/projects/invite`, { email, projectId, role }, { headers: { Authorization: token } });
       toast.success(`Invited ${email} as ${role}`);
@@ -193,31 +279,49 @@ export default function EditorPage() {
 
   // ── Chat ───────────────────────────────────────────────
   const fetchMessages = useCallback(async () => {
-    const res = await axios.get(`${BASE_URL}/api/messages/${projectId}`);
-    setMessages(res.data);
+    try {
+      const res = await axios.get(`${BASE_URL}/api/messages/${projectId}`);
+      setMessages(res.data);
+    } catch { /* silent */ }
   }, [projectId]);
 
   const sendMessage = async () => {
     if (!msg.trim()) return;
-    socketRef.current?.emit("chat-message", { projectId, text: msg });
-    await axios.post(`${BASE_URL}/api/messages`, { projectId, text: msg });
-    setMsg("");
+    const text = msg.trim();
+    setMsg(""); // clear input immediately
+
+    // Add own message to UI immediately (optimistic, styled as "me")
+    setMessages(prev => [...prev, { text, userName: myName, createdAt: new Date().toISOString(), _mine: true }]);
+
+    // Broadcast to others in the room via socket
+    socketRef.current?.emit("chat-message", { projectId, text });
+
+    // Persist to DB (fire and forget — already in UI)
+    try {
+      await axios.post(`${BASE_URL}/api/messages`, { projectId, text });
+    } catch {
+      toast.error("Message failed to send");
+    }
   };
 
   // ── Activity ───────────────────────────────────────────
   const fetchActivity = useCallback(async () => {
-    const res = await axios.get(`${BASE_URL}/api/activity/${projectId}`, { headers: { Authorization: token } });
-    setActivity(res.data);
+    try {
+      const res = await axios.get(`${BASE_URL}/api/activity/${projectId}`, { headers: { Authorization: token } });
+      setActivity(res.data);
+    } catch { /* silent */ }
   }, [projectId, token]);
 
   // ── My role ────────────────────────────────────────────
+  // FIX: always compare as strings — Mongoose ObjectId !== plain string with ===
   const fetchMyRole = useCallback(async () => {
+    if (!myUserId) return;
     try {
       const res = await axios.get(`${BASE_URL}/api/projects/${projectId}/members`, { headers: { Authorization: token } });
-      const me = res.data.find(m => m.user?._id === localStorage.getItem("userId"));
+      const me = res.data.find(m => String(m.user?._id) === String(myUserId));
       if (me) setMyRole(me.role);
-    } catch { /* ignore */ }
-  }, [projectId, token]);
+    } catch { /* default stays "editor" */ }
+  }, [projectId, token, myUserId]);
 
   useEffect(() => {
     fetchFiles();
@@ -227,7 +331,7 @@ export default function EditorPage() {
     fetchMyRole();
   }, [fetchFiles, fetchCommits, fetchMessages, fetchActivity, fetchMyRole]);
 
-  // Close context menu on click away
+  // Close context menu on click-away
   useEffect(() => {
     const close = () => setContextMenu(null);
     window.addEventListener("click", close);
@@ -245,14 +349,11 @@ export default function EditorPage() {
     return `${Math.floor(diff / 1440)}d ago`;
   };
 
-  const actionIcon = (action) => {
-    const map = { saved: "💾", committed: "📌", invited: "👤", created_file: "📄", deleted_file: "🗑", renamed_file: "✏️", created_project: "🚀" };
-    return map[action] || "•";
-  };
+  const actionIcon = (action) => ({ saved: "💾", committed: "📌", invited: "👤", created_file: "📄", deleted_file: "🗑", renamed_file: "✏️", created_project: "🚀" }[action] || "•");
 
   const folders = files.filter(f => f.isFolder);
   const rootFiles = files.filter(f => !f.isFolder && (f.parentFolder === "root" || !f.parentFolder));
-  const getFilesInFolder = (folderName) => files.filter(f => !f.isFolder && f.parentFolder === folderName);
+  const getFilesInFolder = (fn) => files.filter(f => !f.isFolder && f.parentFolder === fn);
   const isReadOnly = myRole === "viewer";
 
   const SidebarItem = ({ file, indent = false }) => (
@@ -271,7 +372,8 @@ export default function EditorPage() {
     <div className="editor-layout">
       <ToastContainer />
 
-      {/* Context menu */}
+      {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvite={handleInvite} />}
+
       {contextMenu && (
         <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
           <div className="context-item" onClick={() => { renameFile(contextMenu.file); setContextMenu(null); }}>✏️ Rename</div>
@@ -279,16 +381,17 @@ export default function EditorPage() {
         </div>
       )}
 
-      {/* SIDEBAR */}
       {showSidebar && (
         <div className="sidebar">
           <div className="sidebar-brand"><Logo size="sm" /></div>
           <div className="sidebar-files">
             <h4>Explorer</h4>
-            {!isReadOnly && <>
-              <button onClick={() => createFile("root")}>+ New File</button>
-              <button onClick={createFolder} style={{ marginTop: 4 }}>+ New Folder</button>
-            </>}
+            {!isReadOnly && (
+              <>
+                <button onClick={() => createFile("root")}>+ New File</button>
+                <button onClick={createFolder} style={{ marginTop: 4 }}>+ New Folder</button>
+              </>
+            )}
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 1 }}>
               {rootFiles.map(f => <SidebarItem key={f._id} file={f} />)}
               {folders.map(folder => (
@@ -313,10 +416,8 @@ export default function EditorPage() {
                 </div>
               ))}
             </div>
-
-            {/* Online users */}
             {onlineUsers.length > 0 && (
-              <div style={{ marginTop: "auto", padding: "10px 0 4px" }}>
+              <div style={{ marginTop: "auto", paddingTop: 12 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: "var(--text-subtle)", marginBottom: 6 }}>Online</div>
                 {onlineUsers.map(u => (
                   <div key={u} style={{ fontSize: 11, color: "var(--green)", display: "flex", alignItems: "center", gap: 5, padding: "2px 0" }}>
@@ -330,11 +431,10 @@ export default function EditorPage() {
         </div>
       )}
 
-      {/* MAIN */}
       <div className="editor-main">
         <div className="editor-top">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button onClick={() => setShowSidebar(!showSidebar)} style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: 16, cursor: "pointer", padding: "2px 6px" }}>☰</button>
+            <button onClick={() => setShowSidebar(p => !p)} style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: 16, cursor: "pointer", padding: "2px 6px" }}>☰</button>
             {!showSidebar && <Logo size="sm" />}
             <span>{selectedFile?.fileName || "No file selected"}</span>
             {myRole && <span className={`role-badge role-${myRole}`}>{myRole}</span>}
@@ -349,8 +449,8 @@ export default function EditorPage() {
             {!isReadOnly && <button onClick={saveFile}>Save</button>}
             <button className="run-btn" onClick={runCode} disabled={running}>{running ? "Running..." : "▶ Run"}</button>
             {!isReadOnly && <button onClick={commitCode}>Commit</button>}
-            <button className="invite-btn" onClick={inviteUser}>+ Invite</button>
-            <button onClick={() => { setShowActivity(!showActivity); if (!showActivity) fetchActivity(); }} className={showActivity ? "active-tab-btn" : ""}>Log</button>
+            <button className="invite-btn" onClick={() => setShowInvite(true)}>+ Invite</button>
+            <button onClick={() => { setShowActivity(p => !p); if (!showActivity) fetchActivity(); }} className={showActivity ? "active-tab-btn" : ""}>Log</button>
           </div>
         </div>
 
@@ -368,20 +468,21 @@ export default function EditorPage() {
           <pre>{output || "Run your code to see output here."}</pre>
         </div>
 
-        {/* Activity log panel */}
         {showActivity && (
           <div className="activity-panel" style={{ padding: "12px 14px" }}>
             <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: "var(--text-subtle)", marginBottom: 8 }}>Activity Log</div>
-            {activity.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No activity yet.</div>}
-            {activity.map(a => (
-              <div key={a._id} className="activity-item">
-                <span className="activity-icon">{actionIcon(a.action)}</span>
-                <span className="activity-user">{a.userName}</span>
-                <span className="activity-action">{a.action.replace(/_/g, " ")}</span>
-                {a.detail && <span className="activity-detail">"{a.detail}"</span>}
-                <span className="activity-time">{formatTime(a.createdAt)}</span>
-              </div>
-            ))}
+            {activity.length === 0
+              ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No activity yet.</div>
+              : activity.map(a => (
+                <div key={a._id} className="activity-item">
+                  <span className="activity-icon">{actionIcon(a.action)}</span>
+                  <span className="activity-user">{a.userName}</span>
+                  <span className="activity-action">{a.action.replace(/_/g, " ")}</span>
+                  {a.detail && <span className="activity-detail">"{a.detail}"</span>}
+                  <span className="activity-time">{formatTime(a.createdAt)}</span>
+                </div>
+              ))
+            }
           </div>
         )}
 
@@ -399,7 +500,7 @@ export default function EditorPage() {
         )}
       </div>
 
-      <div className="chat-btn" onClick={() => setShowChat(!showChat)}>💬</div>
+      <div className="chat-btn" onClick={() => setShowChat(p => !p)}>💬</div>
 
       {showChat && (
         <div className="chat-fixed">
@@ -410,17 +511,26 @@ export default function EditorPage() {
               <div className="chat-status">● Online</div>
             </div>
           </div>
-          <div className="chat-body">
-            {messages.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 20 }}>No messages yet</div>}
+          <div className="chat-body" ref={chatBodyRef}>
+            {messages.length === 0 && (
+              <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 20 }}>No messages yet</div>
+            )}
             {messages.map((m, i) => (
-              <div key={i} className="chat-msg">
-                {m.userName && <span style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 2 }}>{m.userName}</span>}
+              <div key={i} className={`chat-msg${m._mine ? " me" : ""}`}>
+                {!m._mine && m.userName && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 2 }}>{m.userName}</span>
+                )}
                 {m.text}
               </div>
             ))}
           </div>
           <div className="chat-input">
-            <input value={msg} onChange={e => setMsg(e.target.value)} placeholder="Type a message..." onKeyDown={e => e.key === "Enter" && sendMessage()} />
+            <input
+              value={msg}
+              onChange={e => setMsg(e.target.value)}
+              placeholder="Type a message..."
+              onKeyDown={e => e.key === "Enter" && sendMessage()}
+            />
             <button onClick={sendMessage}>Send</button>
           </div>
         </div>
