@@ -1,8 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import Logo from "../components/Logo";
-
-const BASE_URL = "https://codesync-1-fnv2.onrender.com";
+const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 export default function Register() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });

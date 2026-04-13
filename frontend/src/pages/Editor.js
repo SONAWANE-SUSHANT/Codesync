@@ -3,7 +3,7 @@ import axios from "axios";
 import MonacoEditor from "@monaco-editor/react";
 import { io } from "socket.io-client";
 import ToastContainer, { useToast } from "../components/Toast";
-import BASE_URL from "../config/api";
+const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 function Logo({ size }) {
   const isLg = size === "lg";
