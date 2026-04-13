@@ -21,7 +21,9 @@ export default function Login() {
     try {
       const res = await axios.post(`${BASE_URL}/api/auth/login`, form);
 
+      
       localStorage.setItem("token", res.data.token);
+      localStorage.setItem("email", res.data.email); // add this
       window.location.href = "/dashboard";
     } catch (err) {
       setError(err.response?.data?.msg || "Login failed");
