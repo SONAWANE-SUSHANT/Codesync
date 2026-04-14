@@ -107,6 +107,10 @@ export default function EditorPage() {
   const [contextMenu, setContextMenu] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [myRole, setMyRole] = useState("editor");
+  const [showAI, setShowAI] = useState(false);
+  const [aiResult, setAiResult] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const toast = useToast();
   const socketRef = useRef(null);
@@ -349,6 +353,27 @@ export default function EditorPage() {
     return `${Math.floor(diff / 1440)}d ago`;
   };
 
+  // ── AI Assist ─────────────────────────────────────────
+  const askAI = async (mode) => {
+    if (!content.trim() && mode !== "free") return toast.error("Open a file first");
+    if (mode === "free" && !aiPrompt.trim()) return toast.error("Enter a prompt");
+    setAiLoading(true);
+    setAiResult("");
+    try {
+      const langName = getLanguage();
+      const res = await axios.post(
+        `${BASE_URL}/api/ai/assist`,
+        { code: content, language: langName, prompt: aiPrompt, mode },
+        { headers: { Authorization: token } }
+      );
+      setAiResult(res.data.result);
+    } catch {
+      toast.error("AI request failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const actionIcon = (action) => ({ saved: "💾", committed: "📌", invited: "👤", created_file: "📄", deleted_file: "🗑", renamed_file: "✏️", created_project: "🚀" }[action] || "•");
 
   const folders = files.filter(f => f.isFolder);
@@ -451,6 +476,7 @@ export default function EditorPage() {
             {!isReadOnly && <button onClick={commitCode}>Commit</button>}
             <button className="invite-btn" onClick={() => setShowInvite(true)}>+ Invite</button>
             <button onClick={() => { setShowActivity(p => !p); if (!showActivity) fetchActivity(); }} className={showActivity ? "active-tab-btn" : ""}>Log</button>
+            <button className="ai-btn" onClick={() => setShowAI(p => !p)}>✦ AI</button>
           </div>
         </div>
 
@@ -499,6 +525,34 @@ export default function EditorPage() {
           </div>
         )}
       </div>
+
+      {showAI && (
+        <div className="ai-panel">
+          <div className="ai-panel-header">
+            <span>✦ AI Assistant</span>
+            <button onClick={() => setShowAI(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}>×</button>
+          </div>
+          <div className="ai-quick-btns">
+            <button onClick={() => askAI("explain")} disabled={aiLoading}>Explain</button>
+            <button onClick={() => askAI("fix")} disabled={aiLoading}>Fix bugs</button>
+            <button onClick={() => askAI("improve")} disabled={aiLoading}>Improve</button>
+          </div>
+          <div className="ai-freeform">
+            <input
+              value={aiPrompt}
+              onChange={e => setAiPrompt(e.target.value)}
+              placeholder="Ask anything about your code..."
+              onKeyDown={e => e.key === "Enter" && askAI("free")}
+            />
+            <button onClick={() => askAI("free")} disabled={aiLoading}>Ask</button>
+          </div>
+          <div className="ai-result">
+            {aiLoading && <div className="ai-thinking">✦ Thinking...</div>}
+            {!aiLoading && aiResult && <pre>{aiResult}</pre>}
+            {!aiLoading && !aiResult && <div className="ai-placeholder">Select a quick action or type a question above.</div>}
+          </div>
+        </div>
+      )}
 
       <div className="chat-btn" onClick={() => setShowChat(p => !p)}>💬</div>
 

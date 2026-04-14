@@ -15,6 +15,7 @@ const commitRoutes = require("./routes/commitRoutes");
 const codeRoutes = require("./routes/codeRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const activityRoutes = require("./routes/activityRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -35,6 +36,7 @@ app.use("/api/commits", commitRoutes);
 app.use("/api/code", codeRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.get("/", (req, res) => res.send("API Running..."));
 
