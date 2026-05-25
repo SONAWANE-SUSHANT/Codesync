@@ -88,6 +88,74 @@ function InviteModal({ onClose, onInvite }) {
   );
 }
 
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <button type="button" className="ai-copy-btn" onClick={copy}>
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function AIResponse({ text }) {
+  const parts = [];
+  const codeFence = /```([\w-]*)\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeFence.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", value: text.slice(lastIndex, match.index) });
+    }
+    parts.push({
+      type: "code",
+      language: match[1] || "code",
+      value: match[2].trim(),
+    });
+    lastIndex = codeFence.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ type: "text", value: text.slice(lastIndex) });
+  }
+
+  return (
+    <div className="ai-response">
+      {parts.map((part, index) => {
+        if (part.type === "code") {
+          return (
+            <div className="ai-code-block" key={index}>
+              <div className="ai-code-toolbar">
+                <span>{part.language}</span>
+                <CopyButton text={part.value} />
+              </div>
+              <pre><code>{part.value}</code></pre>
+            </div>
+          );
+        }
+
+        return part.value
+          .split(/\n{2,}/)
+          .filter(Boolean)
+          .map((paragraph, paragraphIndex) => (
+            <p key={`${index}-${paragraphIndex}`}>{paragraph.trim()}</p>
+          ));
+      })}
+    </div>
+  );
+}
+
 export default function EditorPage() {
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -284,10 +352,13 @@ export default function EditorPage() {
   // ── Chat ───────────────────────────────────────────────
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await axios.get(`${BASE_URL}/api/messages/${projectId}`);
-      setMessages(res.data);
+      const res = await axios.get(`${BASE_URL}/api/messages/${projectId}`, { headers: { Authorization: token } });
+      setMessages(res.data.map(m => ({
+        ...m,
+        _mine: String(m.userId || "") === String(myUserId),
+      })));
     } catch { /* silent */ }
-  }, [projectId]);
+  }, [projectId, token, myUserId]);
 
   const sendMessage = async () => {
     if (!msg.trim()) return;
@@ -302,7 +373,7 @@ export default function EditorPage() {
 
     // Persist to DB (fire and forget — already in UI)
     try {
-      await axios.post(`${BASE_URL}/api/messages`, { projectId, text });
+      await axios.post(`${BASE_URL}/api/messages`, { projectId, text }, { headers: { Authorization: token } });
     } catch {
       toast.error("Message failed to send");
     }
@@ -367,8 +438,8 @@ export default function EditorPage() {
         { headers: { Authorization: token } }
       );
       setAiResult(res.data.result);
-    } catch {
-      toast.error("AI request failed");
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.response?.data?.msg || "AI request failed");
     } finally {
       setAiLoading(false);
     }
@@ -380,6 +451,10 @@ export default function EditorPage() {
   const rootFiles = files.filter(f => !f.isFolder && (f.parentFolder === "root" || !f.parentFolder));
   const getFilesInFolder = (fn) => files.filter(f => !f.isFolder && f.parentFolder === fn);
   const isReadOnly = myRole === "viewer";
+  const getMessageSender = (message) => {
+    if (message._mine) return myName;
+    return message.userName || "Someone";
+  };
 
   const SidebarItem = ({ file, indent = false }) => (
     <div
@@ -548,7 +623,7 @@ export default function EditorPage() {
           </div>
           <div className="ai-result">
             {aiLoading && <div className="ai-thinking">✦ Thinking...</div>}
-            {!aiLoading && aiResult && <pre>{aiResult}</pre>}
+            {!aiLoading && aiResult && <AIResponse text={aiResult} />}
             {!aiLoading && !aiResult && <div className="ai-placeholder">Select a quick action or type a question above.</div>}
           </div>
         </div>
@@ -571,9 +646,7 @@ export default function EditorPage() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={`chat-msg${m._mine ? " me" : ""}`}>
-                {!m._mine && m.userName && (
-                  <span style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginBottom: 2 }}>{m.userName}</span>
-                )}
+                <span className="chat-msg-author">{getMessageSender(m)}</span>
                 {m.text}
               </div>
             ))}

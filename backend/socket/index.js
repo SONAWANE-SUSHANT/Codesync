@@ -48,7 +48,7 @@ module.exports = function initSocket(io) {
 
     // Broadcast chat messages in real-time
     socket.on("chat-message", ({ projectId, text }) => {
-      io.to(projectId).emit("chat-message", {
+      socket.to(projectId).emit("chat-message", {
         userId: socket.userId,
         userName: socket.userName,
         text,
