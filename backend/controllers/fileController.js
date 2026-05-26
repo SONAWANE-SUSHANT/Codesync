@@ -58,21 +58,29 @@ exports.updateFile = async (req, res) => {
   }
 };
 
-// Rename File
+// Rename File or Folder
 exports.renameFile = async (req, res) => {
   try {
-    const file = await File.findByIdAndUpdate(
-      req.params.fileId,
-      { fileName: req.body.fileName },
-      { new: true }
-    );
+    const file = await File.findById(req.params.fileId);
+    if (!file) return res.status(404).json({ msg: "File not found" });
+
+    const oldName = file.fileName;
+    file.fileName = req.body.fileName;
+    await file.save();
+
+    if (file.isFolder) {
+      await File.updateMany(
+        { projectId: file.projectId, parentFolder: oldName },
+        { parentFolder: req.body.fileName }
+      );
+    }
 
     await log({
       projectId: file.projectId,
       userId: req.user.id,
       userName: req.user.name || "Someone",
-      action: "renamed_file",
-      detail: `→ ${req.body.fileName}`,
+      action: file.isFolder ? "renamed_folder" : "renamed_file",
+      detail: `${oldName} -> ${req.body.fileName}`,
     });
 
     res.json(file);
@@ -81,17 +89,21 @@ exports.renameFile = async (req, res) => {
   }
 };
 
-// Delete File
+// Delete File or Folder
 exports.deleteFile = async (req, res) => {
   try {
     const file = await File.findByIdAndDelete(req.params.fileId);
     if (!file) return res.status(404).json({ msg: "File not found" });
 
+    if (file.isFolder) {
+      await File.deleteMany({ projectId: file.projectId, parentFolder: file.fileName });
+    }
+
     await log({
       projectId: file.projectId,
       userId: req.user.id,
       userName: req.user.name || "Someone",
-      action: "deleted_file",
+      action: file.isFolder ? "deleted_folder" : "deleted_file",
       detail: file.fileName,
     });
 

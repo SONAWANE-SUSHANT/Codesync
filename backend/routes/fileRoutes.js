@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { createFile, getFiles, updateFile, renameFile, deleteFile } = require("../controllers/fileController");
-const auth = require("../middleware/AuthMiddleware");
+const auth = require("../middleware/authMiddleware");
 const File = require("../models/File");
 
 // Create file

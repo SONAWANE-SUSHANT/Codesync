@@ -159,6 +159,7 @@ function AIResponse({ text }) {
 export default function EditorPage() {
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [openFiles, setOpenFiles] = useState([]);
   const [content, setContent] = useState("");
   const [output, setOutput] = useState("");
   const [language, setLanguage] = useState("63");
@@ -201,6 +202,9 @@ export default function EditorPage() {
     socket.emit("join-project", projectId);
 
     socket.on("code-change", ({ fileId, content: remoteContent }) => {
+      setOpenFiles(prev => prev.map(file => (
+        file._id === fileId ? { ...file, content: remoteContent } : file
+      )));
       if (selectedFileRef.current?._id === fileId) {
         suppressRemote.current = true;
         setContent(remoteContent);
@@ -237,6 +241,13 @@ export default function EditorPage() {
     try {
       const res = await axios.get(`${BASE_URL}/api/files/${projectId}`, { headers: { Authorization: token } });
       setFiles(res.data);
+      setOpenFiles(prev => prev
+        .map(openFile => {
+          const latest = res.data.find(file => file._id === openFile._id);
+          return latest ? { ...latest, content: openFile.content } : null;
+        })
+        .filter(Boolean)
+      );
     } catch { /* silent */ }
   }, [projectId, token]);
 
@@ -261,30 +272,65 @@ export default function EditorPage() {
   };
 
   const renameFile = async (file) => {
-    const newName = prompt("New name", file.fileName);
+    const newName = prompt(file.isFolder ? "New folder name" : "New name", file.fileName);
     if (!newName || newName === file.fileName) return;
     try {
       await axios.patch(`${BASE_URL}/api/files/${file._id}/rename`, { fileName: newName }, { headers: { Authorization: token } });
       toast.success(`Renamed to "${newName}"`);
+      setOpenFiles(prev => prev.map(openFile => (
+        openFile._id === file._id ? { ...openFile, fileName: newName } : openFile
+      )));
       if (selectedFile?._id === file._id) setSelectedFile(prev => ({ ...prev, fileName: newName }));
       fetchFiles();
     } catch { toast.error("Rename failed"); }
   };
 
   const deleteFile = async (file) => {
-    if (!window.confirm(`Delete "${file.fileName}"?`)) return;
+    const message = file.isFolder
+      ? `Delete folder "${file.fileName}" and all files inside it?`
+      : `Delete "${file.fileName}"?`;
+    if (!window.confirm(message)) return;
     try {
       await axios.delete(`${BASE_URL}/api/files/${file._id}`, { headers: { Authorization: token } });
       toast.success(`Deleted "${file.fileName}"`);
-      if (selectedFile?._id === file._id) { setSelectedFile(null); setContent(""); }
+      const removedIds = new Set(
+        file.isFolder
+          ? files.filter(f => f._id === file._id || f.parentFolder === file.fileName).map(f => f._id)
+          : [file._id]
+      );
+      setOpenFiles(prev => prev.filter(openFile => !removedIds.has(openFile._id)));
+      if (selectedFile && removedIds.has(selectedFile._id)) {
+        setSelectedFile(null);
+        setContent("");
+      }
       fetchFiles();
     } catch { toast.error("Delete failed"); }
   };
 
   const selectFile = (file) => {
     if (file.isFolder) return;
-    setSelectedFile(file);
-    setContent(file.content || "");
+    const openFile = openFiles.find(item => item._id === file._id);
+    const nextFile = openFile || file;
+    setSelectedFile(nextFile);
+    setContent(nextFile.content || "");
+    setOpenFiles(prev => {
+      if (prev.some(openFile => openFile._id === file._id)) return prev;
+      return [...prev, file];
+    });
+  };
+
+  const closeOpenFile = (fileId, event) => {
+    event.stopPropagation();
+    setOpenFiles(prev => {
+      const nextOpenFiles = prev.filter(file => file._id !== fileId);
+      if (selectedFile?._id === fileId) {
+        const closingIndex = prev.findIndex(file => file._id === fileId);
+        const nextSelected = nextOpenFiles[closingIndex] || nextOpenFiles[closingIndex - 1] || null;
+        setSelectedFile(nextSelected);
+        setContent(nextSelected?.content || "");
+      }
+      return nextOpenFiles;
+    });
   };
 
   const toggleFolder = (id) => setExpandedFolders(prev => ({ ...prev, [id]: !prev[id] }));
@@ -292,7 +338,10 @@ export default function EditorPage() {
   const saveFile = async () => {
     if (!selectedFile) return toast.error("Select a file first");
     try {
-      await axios.put(`${BASE_URL}/api/files/${selectedFile._id}`, { content }, { headers: { Authorization: token } });
+      const res = await axios.put(`${BASE_URL}/api/files/${selectedFile._id}`, { content }, { headers: { Authorization: token } });
+      setOpenFiles(prev => prev.map(file => (
+        file._id === selectedFile._id ? { ...file, content: res.data.content } : file
+      )));
       toast.success("Saved");
     } catch { toast.error("Save failed"); }
   };
@@ -300,6 +349,9 @@ export default function EditorPage() {
   const handleCodeChange = (val) => {
     if (suppressRemote.current) { suppressRemote.current = false; return; }
     setContent(val || "");
+    setOpenFiles(prev => prev.map(file => (
+      file._id === selectedFile?._id ? { ...file, content: val || "" } : file
+    )));
     if (socketRef.current && selectedFile) {
       socketRef.current.emit("code-change", { projectId, fileId: selectedFile._id, content: val });
     }
@@ -496,7 +548,11 @@ export default function EditorPage() {
               {rootFiles.map(f => <SidebarItem key={f._id} file={f} />)}
               {folders.map(folder => (
                 <div key={folder._id}>
-                  <div className="sidebar-item" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div
+                    className="sidebar-item"
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, file: folder }); }}
+                  >
                     <span onClick={() => toggleFolder(folder._id)} style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 10, color: "var(--text-subtle)", display: "inline-block", transform: expandedFolders[folder._id] ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>▶</span>
                       {folder.fileName}
@@ -554,6 +610,23 @@ export default function EditorPage() {
             <button className="ai-btn" onClick={() => setShowAI(p => !p)}>✦ AI</button>
           </div>
         </div>
+
+        {openFiles.length > 0 && (
+          <div className="editor-tabs">
+            {openFiles.map(file => (
+              <button
+                type="button"
+                key={file._id}
+                className={`editor-tab${selectedFile?._id === file._id ? " active" : ""}`}
+                onClick={() => selectFile(file)}
+                title={file.fileName}
+              >
+                <span>{file.fileName}</span>
+                <span className="editor-tab-close" onClick={(event) => closeOpenFile(file._id, event)}>x</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <MonacoEditor
           height="350px"

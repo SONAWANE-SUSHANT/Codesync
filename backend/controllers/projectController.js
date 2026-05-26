@@ -1,5 +1,6 @@
 const Project = require("../models/Project");
 const User = require("../models/User");
+const File = require("../models/File");
 const { log } = require("./activityController");
 
 // Create Project
@@ -104,5 +105,37 @@ exports.makePublic = async (req, res) => {
     res.json({ msg: "Project is now public" });
   } catch {
     res.status(500).json({ msg: "Failed" });
+  }
+};
+
+// Rename Project
+exports.renameProject = async (req, res) => {
+  try {
+    const project = await Project.findOneAndUpdate(
+      { _id: req.params.id, "members.user": req.user.id },
+      { name: req.body.name },
+      { new: true }
+    );
+
+    if (!project) return res.status(404).json({ msg: "Project not found" });
+    res.json(project);
+  } catch {
+    res.status(500).json({ msg: "Rename failed" });
+  }
+};
+
+// Delete Project
+exports.deleteProject = async (req, res) => {
+  try {
+    const project = await Project.findOneAndDelete({
+      _id: req.params.id,
+      "members.user": req.user.id,
+    });
+
+    if (!project) return res.status(404).json({ msg: "Project not found" });
+    await File.deleteMany({ projectId: project._id });
+    res.json({ msg: "Deleted" });
+  } catch {
+    res.status(500).json({ msg: "Delete failed" });
   }
 };

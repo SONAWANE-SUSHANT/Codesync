@@ -37,6 +37,32 @@ export default function Dashboard() {
     }
   };
 
+  const renameProject = async (project) => {
+    const newName = prompt("New project name", project.name);
+    if (!newName || newName === project.name) return;
+    try {
+      await axios.patch(`${BASE_URL}/api/projects/${project._id}/rename`, { name: newName }, { headers: { Authorization: token } });
+      toast.success(`Renamed to "${newName}"`);
+      fetchProjects();
+    } catch {
+      toast.error("Failed to rename project");
+    }
+  };
+
+  const deleteProject = async (project) => {
+    if (!window.confirm(`Delete "${project.name}" and its files?`)) return;
+    try {
+      await axios.delete(`${BASE_URL}/api/projects/${project._id}`, { headers: { Authorization: token } });
+      if (localStorage.getItem("projectId") === project._id) {
+        localStorage.removeItem("projectId");
+      }
+      toast.success(`Deleted "${project.name}"`);
+      fetchProjects();
+    } catch {
+      toast.error("Failed to delete project");
+    }
+  };
+
   useEffect(() => { fetchProjects(); }, [fetchProjects]);
 
   return (
@@ -85,13 +111,15 @@ export default function Dashboard() {
                 {p.members?.length || 1} member{(p.members?.length || 1) !== 1 ? "s" : ""} ·{" "}
                 {p.isPublic ? "Public" : "Private"}
               </p>
-              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
                 <button onClick={() => {
                   localStorage.setItem("projectId", p._id);
                   window.location.href = "/editor";
                 }}>
                   Open →
                 </button>
+                <button onClick={() => renameProject(p)}>Rename</button>
+                <button className="danger-btn" onClick={() => deleteProject(p)}>Delete</button>
               </div>
             </div>
           ))}
